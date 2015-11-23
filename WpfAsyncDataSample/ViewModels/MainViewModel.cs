@@ -2,19 +2,19 @@
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Windows.Input;
+using Prism.Commands;
+using Prism.Mvvm;
 using WpfAsyncDataSample.Model;
 
 namespace WpfAsyncDataSample.ViewModels
 {
-    public class MainViewModel : BaseViewModel
+    public class MainViewModel : BindableBase
     {
         #region Fields
 
-        private readonly EmployeeDataProvider _dataProvider;
-        private readonly ObservableCollection<Employee> _items;
-
+        private readonly EmployeeDataProvider _dataProvider = new EmployeeDataProvider();
+        private readonly ObservableCollection<Employee> _items = new ObservableCollection<Employee>();
         private CancellationTokenSource _cancellationTokenSource;
-        private IProgress<double> _progress;
         private double _currentProgress;
         private string _currentStatus;
 
@@ -27,64 +27,69 @@ namespace WpfAsyncDataSample.ViewModels
             get { return _items; }
         }
 
+        protected CancellationTokenSource CancellationTokenSource
+        {
+            get { return _cancellationTokenSource; }
+            set { SetProperty(ref _cancellationTokenSource, value); }
+        }
+
         public double CurrentProgress
         {
             get { return _currentProgress; }
-            private set
-            {
-                _currentProgress = value;
-                OnPropertyChanged();
-            }
+            private set { SetProperty(ref _currentProgress, value); }
         }
 
         public string CurrentStatus
         {
             get { return _currentStatus; }
-            private set
-            {
-                _currentStatus = value;
-                OnPropertyChanged();
-            }
+            private set { SetProperty(ref _currentStatus, value); }
         }
 
-        public ICommand LoadEmployeesCommand { get; private set; }
-        public ICommand CancelCommand { get; private set; }
+        public ICommand LoadEmployeesCommand
+        {
+            get; private set;
+        }
+
+        public ICommand CancelCommand
+        {
+            get; private set;
+        }
 
         #endregion
 
         public MainViewModel()
         {
-            _dataProvider = new EmployeeDataProvider();
-            _items = new ObservableCollection<Employee>();
-            LoadEmployeesCommand = new RelayCommand(LoadEmployeesExecute, LoadEmployeesCanExecute);
-            CancelCommand = new RelayCommand(CancelExecute, CancelCanExecute);
+            LoadEmployeesCommand = new DelegateCommand(LoadEmployees, CanLoadEmployees)
+                .ObservesProperty(() => CancellationTokenSource);
+
+            CancelCommand = new DelegateCommand(Cancel, CanCancel)
+                .ObservesProperty(() => CancellationTokenSource);
         }
 
-        private bool CancelCanExecute(object o)
+        private bool CanCancel()
         {
-            return _cancellationTokenSource != null;
+            return CancellationTokenSource != null;
         }
 
-        private void CancelExecute(object o)
+        private void Cancel()
         {
-            _cancellationTokenSource.Cancel();
+            CancellationTokenSource.Cancel();
         }
 
-        private bool LoadEmployeesCanExecute(object o)
+        private bool CanLoadEmployees()
         {
-            return _cancellationTokenSource == null;
+            return CancellationTokenSource == null;
         }
 
-        private async void LoadEmployeesExecute(object o)
+        private async void LoadEmployees()
         {
-            _cancellationTokenSource = new CancellationTokenSource();
-            _progress = new Progress<double>(x => CurrentProgress = x);
-            try
-            {
+            CancellationTokenSource = new CancellationTokenSource();
+            IProgress<double> progress = new Progress<double>(x => CurrentProgress = x);
+            try {
                 CurrentStatus = "Loading employees";
 
                 Items.Clear();
-                var result = await _dataProvider.LoadEmployeesAsync(_cancellationTokenSource.Token, _progress);
+                var result = await _dataProvider.LoadEmployeesAsync(CancellationTokenSource.Token, progress);
 
                 if (result.Result != null) {
                     foreach (var item in result.Result) {
@@ -97,19 +102,16 @@ namespace WpfAsyncDataSample.ViewModels
 
                 CurrentStatus = "Operation completed";
             }
-            catch (OperationCanceledException)
-            {
+            catch (OperationCanceledException) {
                 CurrentStatus = "Operation cancelled";
             }
-            catch (Exception ex)
-            {
+            catch (Exception ex) {
                 CurrentStatus = "Operation failed - " + ex.Message;
             }
-            finally
-            {
-                _cancellationTokenSource.Dispose();
-                _cancellationTokenSource = null;
-                _progress.Report(0);
+            finally {
+                CancellationTokenSource.Dispose();
+                CancellationTokenSource = null;
+                progress.Report(0);
             }
         }
 

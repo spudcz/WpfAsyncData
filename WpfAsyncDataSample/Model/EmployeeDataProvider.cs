@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -17,32 +16,30 @@ namespace WpfAsyncDataSample.Model
 
         private DataResult<IList<Employee>> LoadEmployees(CancellationToken token, IProgress<double> progress)
         {
-            var xdoc = XDocument.Load(@"data\sampledata.xml");
-            var employees = xdoc.Descendants("Employee").Select(x => new Employee
-            {
-                Number = int.Parse(x.Descendants("Number").First().Value),
-                Name = x.Descendants("Name").First().Value,
-                Surname = x.Descendants("Surname").First().Value,
-                Salary = double.Parse(x.Descendants("Salary").First().Value)
-            }).ToList();
+            var employees = XDocument.Load(@"data\sampledata.xml")
+                .Descendants("Employee")
+                .Select(x => new Employee {
+                    Number = int.Parse(x.Descendants("Number").First().Value),
+                    Name = x.Descendants("Name").First().Value,
+                    Surname = x.Descendants("Surname").First().Value,
+                    Salary = double.Parse(x.Descendants("Salary").First().Value)
+                })
+                .ToList();
 
             var itemIndex = 0;
-            var result = new DataResult<IList<Employee>>
-            {
+            var result = new DataResult<IList<Employee>> {
                 Result = new List<Employee>()
             };
-            try
-            {
-                foreach (var employee in employees)
-                {
+
+            try {
+                foreach (var employee in employees) {
                     Thread.CurrentThread.Join(100);
                     result.Result.Add(employee);
                     token.ThrowIfCancellationRequested();
                     progress.Report((++itemIndex*100)/employees.Count);
                 }
             }
-            catch (OperationCanceledException ex)
-            {
+            catch (OperationCanceledException ex) {
                 result.Exception = ex;
             }
 
